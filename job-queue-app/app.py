@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-from prometheus_client import Counter, Gauge, Histogram, generate_latest
+from prometheus_client import Counter, Gauge, Histogram, Summary, generate_latest
 import uuid
 import threading
 import time
@@ -25,6 +25,11 @@ jobs_in_progress = Gauge(
 job_processing_seconds = Histogram(
     "job_processing_seconds",
     "Time taken to process a job, in seconds"
+)
+
+invoice_file_size_kb = Summary(
+    "invoice_file_size_kb",
+    "Size of generated invoice PDF files in kilobytes"
 )
 
 def generate_invoice(job_id, customer, items):
@@ -96,6 +101,9 @@ def worker_loop():
 
                 duration = time.time() - start_time
                 job_processing_seconds.observe(duration)
+
+                file_size_kb = os.path.getsize(filename) / 1024
+                invoice_file_size_kb.observe(file_size_kb)
 
                 job["status"] = "done"
                 job["file"] = filename
