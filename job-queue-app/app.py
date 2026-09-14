@@ -32,6 +32,12 @@ invoice_file_size_kb = Summary(
     "Size of generated invoice PDF files in kilobytes"
 )
 
+invoice_total_value = Histogram(
+    "invoice_total_value",
+    "Total dollar value of generated invoices",
+    buckets=[10, 50, 100, 500, 1000, 5000, 10000]
+)
+
 def generate_invoice(job_id, customer, items):
     pdf = FPDF()
     pdf.add_page()
@@ -53,7 +59,7 @@ def generate_invoice(job_id, customer, items):
 
     filename = f"invoices/invoice_{job_id}.pdf"
     pdf.output(filename)
-    return filename
+    return filename, total
 
 @app.route("/")
 def home():
@@ -97,13 +103,15 @@ def worker_loop():
 
                 time.sleep(2)
 
-                filename = generate_invoice(job_id, job["customer"], job["items"])
+                filename, invoice_total = generate_invoice(job_id, job["customer"], job["items"])
 
                 duration = time.time() - start_time
                 job_processing_seconds.observe(duration)
 
                 file_size_kb = os.path.getsize(filename) / 1024
                 invoice_file_size_kb.observe(file_size_kb)
+
+                invoice_total_value.observe(invoice_total)
 
                 job["status"] = "done"
                 job["file"] = filename
