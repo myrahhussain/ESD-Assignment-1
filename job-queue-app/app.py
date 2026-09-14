@@ -24,6 +24,13 @@ def create_job():
     }
 
     return jsonify({"job_id": job_id, "status": "pending"})
-    
+
+@app.route("/jobs/<job_id>")
+def get_job(job_id):
+    if job_id not in jobs:
+        return jsonify({"error": "Job not found"}), 404
+
+    return jsonify(jobs[job_id])
+
 if __name__ == "__main__":
     app.run(debug=True)
