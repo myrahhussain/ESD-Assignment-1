@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-from prometheus_client import Counter, Gauge, generate_latest
+from prometheus_client import Counter, Gauge, Histogram, generate_latest
 import uuid
 import threading
 import time
@@ -20,6 +20,11 @@ jobs_submitted_total = Counter(
 jobs_in_progress = Gauge(
     "jobs_in_progress",
     "Number of jobs currently pending or being processed"
+)
+
+job_processing_seconds = Histogram(
+    "job_processing_seconds",
+    "Time taken to process a job, in seconds"
 )
 
 def generate_invoice(job_id, customer, items):
@@ -83,9 +88,15 @@ def worker_loop():
                 job["status"] = "in_progress"
                 print(f"Processing job {job_id}...")
 
+                start_time = time.time()
+
                 time.sleep(2)
 
                 filename = generate_invoice(job_id, job["customer"], job["items"])
+
+                duration = time.time() - start_time
+                job_processing_seconds.observe(duration)
+
                 job["status"] = "done"
                 job["file"] = filename
                 jobs_in_progress.dec()
@@ -96,4 +107,4 @@ def worker_loop():
 if __name__ == "__main__":
     worker_thread = threading.Thread(target=worker_loop, daemon=True)
     worker_thread.start()
-    app.run(debug=True)
+    app.run(debug=True, use_reloader=False)
