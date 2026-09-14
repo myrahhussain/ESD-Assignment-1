@@ -1,15 +1,21 @@
-from flask import Flask
+from flask import Flask, request, jsonify
+from prometheus_client import Counter, generate_latest
+import uuid
+import threading
+import time
+import os
+from fpdf import FPDF
 
 app = Flask(__name__)
 
-import uuid
-
 jobs = {}
 
-from fpdf import FPDF
-import os
-
 os.makedirs("invoices", exist_ok=True)
+
+jobs_submitted_total = Counter(
+    "jobs_submitted_total",
+    "Total number of invoice jobs submitted"
+)
 
 def generate_invoice(job_id, customer, items):
     pdf = FPDF()
@@ -36,9 +42,7 @@ def generate_invoice(job_id, customer, items):
 
 @app.route("/")
 def home():
-    return "This is Myrah's invoice job queue."  
-
-from flask import request, jsonify
+    return "This is Myrah's invoice job queue."
 
 @app.route("/jobs", methods=["POST"])
 def create_job():
@@ -51,6 +55,8 @@ def create_job():
         "items": data["items"]
     }
 
+    jobs_submitted_total.inc()
+
     return jsonify({"job_id": job_id, "status": "pending"})
 
 @app.route("/jobs/<job_id>")
@@ -60,8 +66,9 @@ def get_job(job_id):
 
     return jsonify(jobs[job_id])
 
-import threading
-import time
+@app.route("/metrics")
+def metrics():
+    return generate_latest()
 
 def worker_loop():
     while True:
@@ -70,14 +77,14 @@ def worker_loop():
                 job["status"] = "in_progress"
                 print(f"Processing job {job_id}...")
 
-                time.sleep(2)  # simulate the work taking a couple seconds
+                time.sleep(2)
 
                 filename = generate_invoice(job_id, job["customer"], job["items"])
                 job["status"] = "done"
                 job["file"] = filename
                 print(f"Job {job_id} done -> {filename}")
 
-        time.sleep(1)  # wait a second before checking again
+        time.sleep(1)
 
 if __name__ == "__main__":
     worker_thread = threading.Thread(target=worker_loop, daemon=True)
