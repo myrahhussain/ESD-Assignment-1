@@ -7,4 +7,7 @@ filebeat.inputs:
     json.add_error_key: true
 
 output.elasticsearch:
-  hosts: ["host.docker.internal:92
+  hosts: ["host.docker.internal:9200"]
+
+setup.ilm.policy_name: "invoice-app-logs-policy"
+setup.ilm.overwrite: true
