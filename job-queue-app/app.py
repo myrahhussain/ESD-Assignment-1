@@ -23,6 +23,8 @@ formatter = jsonlogger.JsonFormatter("%(asctime)s %(levelname)s %(name)s %(messa
 log_handler.setFormatter(formatter)
 logger.addHandler(log_handler)
 
+SERVICE_NAME = "invoice_job_queue"
+
 jobs_submitted_total = Counter(
     "jobs_submitted_total",
     "Total number of invoice jobs submitted"
@@ -93,6 +95,7 @@ def create_job():
     logger.info(
         "Job submitted",
         extra={
+            "service": SERVICE_NAME,
             "job_id": job_id,
             "event_type": "job_submitted",
             "customer": data["customer"],
@@ -118,7 +121,14 @@ def worker_loop():
         for job_id, job in list(jobs.items()):
             if job["status"] == "pending":
                 job["status"] = "in_progress"
-                logger.info("Job processing started", extra={"job_id": job_id, "event_type": "job_started"})
+                logger.info(
+                    "Job processing started",
+                    extra={
+                        "service": SERVICE_NAME,
+                        "job_id": job_id,
+                        "event_type": "job_started"
+                    }
+                )
 
                 start_time = time.time()
 
@@ -141,6 +151,7 @@ def worker_loop():
                 logger.info(
                     "Job completed successfully",
                     extra={
+                        "service": SERVICE_NAME,
                         "job_id": job_id,
                         "event_type": "job_completed",
                         "invoice_file": filename,
