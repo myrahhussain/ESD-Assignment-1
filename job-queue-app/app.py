@@ -90,7 +90,15 @@ def create_job():
     jobs_submitted_total.inc()
     jobs_in_progress.inc()
 
-    logger.info("Job submitted", extra={"job_id": job_id, "event_type": "job_submitted", "customer": data["customer"]})
+    logger.info(
+        "Job submitted",
+        extra={
+            "job_id": job_id,
+            "event_type": "job_submitted",
+            "customer": data["customer"],
+            "items": data["items"]
+        }
+    )
 
     return jsonify({"job_id": job_id, "status": "pending"})
 
@@ -130,7 +138,16 @@ def worker_loop():
                 job["file"] = filename
                 jobs_in_progress.dec()
 
-                logger.info("Job completed successfully", extra={"job_id": job_id, "event_type": "job_completed", "invoice_file": filename, "duration_seconds": duration, "invoice_total": invoice_total})
+                logger.info(
+                    "Job completed successfully",
+                    extra={
+                        "job_id": job_id,
+                        "event_type": "job_completed",
+                        "invoice_file": filename,
+                        "duration_seconds": duration,
+                        "invoice_total": invoice_total
+                    }
+                )
 
         time.sleep(1)
 
