@@ -4,6 +4,8 @@ import uuid
 import threading
 import time
 import os
+import logging
+from pythonjsonlogger import jsonlogger
 from fpdf import FPDF
 
 app = Flask(__name__)
@@ -11,6 +13,15 @@ app = Flask(__name__)
 jobs = {}
 
 os.makedirs("invoices", exist_ok=True)
+os.makedirs("logs", exist_ok=True)
+
+logger = logging.getLogger("invoice_app")
+logger.setLevel(logging.INFO)
+
+log_handler = logging.FileHandler("logs/app.log")
+formatter = jsonlogger.JsonFormatter("%(asctime)s %(levelname)s %(name)s %(message)s")
+log_handler.setFormatter(formatter)
+logger.addHandler(log_handler)
 
 jobs_submitted_total = Counter(
     "jobs_submitted_total",
@@ -79,6 +90,8 @@ def create_job():
     jobs_submitted_total.inc()
     jobs_in_progress.inc()
 
+    logger.info("Job submitted", extra={"job_id": job_id, "event": "job_submitted", "customer": data["customer"]})
+
     return jsonify({"job_id": job_id, "status": "pending"})
 
 @app.route("/jobs/<job_id>")
@@ -97,7 +110,7 @@ def worker_loop():
         for job_id, job in list(jobs.items()):
             if job["status"] == "pending":
                 job["status"] = "in_progress"
-                print(f"Processing job {job_id}...")
+                logger.info("Job processing started", extra={"job_id": job_id, "event": "job_started"})
 
                 start_time = time.time()
 
@@ -116,7 +129,8 @@ def worker_loop():
                 job["status"] = "done"
                 job["file"] = filename
                 jobs_in_progress.dec()
-                print(f"Job {job_id} done -> {filename}")
+
+                logger.info("Job completed successfully", extra={"job_id": job_id, "event": "job_completed", "file": filename, "duration_seconds": duration, "invoice_total": invoice_total})
 
         time.sleep(1)
 
