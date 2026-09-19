@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-from prometheus_client import Counter, Gauge, Histogram, Summary, generate_latest
+from prometheus_client import Counter, Gauge, Histogram, Summary, generate_latest, CONTENT_TYPE_LATEST
 import uuid
 import threading
 import time
@@ -90,7 +90,7 @@ def get_job(job_id):
 
 @app.route("/metrics")
 def metrics():
-    return generate_latest()
+    return generate_latest(), 200, {"Content-Type": CONTENT_TYPE_LATEST}
 
 def worker_loop():
     while True:
