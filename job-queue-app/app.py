@@ -4,6 +4,7 @@ import uuid
 import threading
 import time
 import os
+import random
 import logging
 from pythonjsonlogger import jsonlogger
 from fpdf import FPDF
@@ -24,6 +25,14 @@ log_handler.setFormatter(formatter)
 logger.addHandler(log_handler)
 
 SERVICE_NAME = "invoice_job_queue"
+
+# --- Chaos / fault injection state ---
+CHAOS_STATE = {
+    "slow_every_nth": 0,      # 0 = off. e.g. 3 = every 3rd job is slow
+    "failure_rate": 0.0       # 0.0 = off. e.g. 0.2 = 20% of jobs fail
+}
+jobs_processed_count = 0
+chaos_lock = threading.Lock()
 
 jobs_submitted_total = Counter(
     "jobs_submitted_total",
@@ -49,6 +58,11 @@ invoice_total_value = Histogram(
     "invoice_total_value",
     "Total dollar value of generated invoices",
     buckets=[10, 50, 100, 500, 1000, 5000, 10000]
+)
+
+jobs_failed_total = Counter(
+    "jobs_failed_total",
+    "Total number of jobs that failed during processing"
 )
 
 def generate_invoice(job_id, customer, items):
@@ -77,6 +91,19 @@ def generate_invoice(job_id, customer, items):
 @app.route("/")
 def home():
     return "This is Myrah's invoice job queue."
+
+@app.route("/chaos", methods=["POST"])
+def set_chaos():
+    data = request.get_json()
+    if "slow_every_nth" in data:
+        CHAOS_STATE["slow_every_nth"] = data["slow_every_nth"]
+    if "failure_rate" in data:
+        CHAOS_STATE["failure_rate"] = data["failure_rate"]
+    return jsonify({"status": "ok", "chaos_state": CHAOS_STATE})
+
+@app.route("/chaos", methods=["GET"])
+def get_chaos():
+    return jsonify(CHAOS_STATE)
 
 @app.route("/jobs", methods=["POST"])
 def create_job():
@@ -117,22 +144,46 @@ def metrics():
     return generate_latest(), 200, {"Content-Type": CONTENT_TYPE_LATEST}
 
 def worker_loop():
+    global jobs_processed_count
     while True:
         for job_id, job in list(jobs.items()):
             if job["status"] == "pending":
                 job["status"] = "in_progress"
                 logger.info(
                     "Job processing started",
-                    extra={
-                        "service": SERVICE_NAME,
-                        "job_id": job_id,
-                        "event_type": "job_started"
-                    }
+                    extra={"service": SERVICE_NAME, "job_id": job_id, "event_type": "job_started"}
                 )
 
                 start_time = time.time()
 
-                time.sleep(8)
+                with chaos_lock:
+                    jobs_processed_count += 1
+                    current_count = jobs_processed_count
+                    slow_n = CHAOS_STATE["slow_every_nth"]
+                    fail_rate = CHAOS_STATE["failure_rate"]
+
+                # Decide if this job should randomly fail
+                if fail_rate > 0 and random.random() < fail_rate:
+                    time.sleep(1)
+                    job["status"] = "failed"
+                    jobs_in_progress.dec()
+                    jobs_failed_total.inc()
+                    logger.error(
+                        "Job failed during processing",
+                        extra={
+                            "service": SERVICE_NAME,
+                            "job_id": job_id,
+                            "event_type": "job_failed",
+                            "reason": "simulated_failure"
+                        }
+                    )
+                    continue
+
+                # Decide if this job should be artificially slow
+                if slow_n > 0 and current_count % slow_n == 0:
+                    time.sleep(30)
+                else:
+                    time.sleep(8)
 
                 filename, invoice_total = generate_invoice(job_id, job["customer"], job["items"])
 
