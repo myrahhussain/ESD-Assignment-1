@@ -28,8 +28,8 @@ SERVICE_NAME = "invoice_job_queue"
 
 # --- Chaos / fault injection state ---
 CHAOS_STATE = {
-    "slow_every_nth": 0,      # 0 = off. e.g. 3 = every 3rd job is slow
-    "failure_rate": 0.0       # 0.0 = off. e.g. 0.2 = 20% of jobs fail
+    "slow_every_nth": 0,
+    "failure_rate": 0.0
 }
 jobs_processed_count = 0
 chaos_lock = threading.Lock()
@@ -63,6 +63,18 @@ invoice_total_value = Histogram(
 jobs_failed_total = Counter(
     "jobs_failed_total",
     "Total number of jobs that failed during processing"
+)
+
+# --- Cardinality explosion demo ---
+cardinality_test_counter = Counter(
+    "cardinality_test_requests_total",
+    "Test counter demonstrating cardinality explosion when labeled with a unique ID per call",
+    ["request_id"]
+)
+
+cardinality_test_safe_counter = Counter(
+    "cardinality_test_safe_requests_total",
+    "Safe version - no per-request label, single series regardless of call volume"
 )
 
 def generate_invoice(job_id, customer, items):
@@ -104,6 +116,17 @@ def set_chaos():
 @app.route("/chaos", methods=["GET"])
 def get_chaos():
     return jsonify(CHAOS_STATE)
+
+@app.route("/cardinality-test")
+def cardinality_test():
+    request_id = str(uuid.uuid4())
+    cardinality_test_counter.labels(request_id=request_id).inc()
+    return jsonify({"request_id": request_id})
+
+@app.route("/cardinality-test-safe")
+def cardinality_test_safe():
+    cardinality_test_safe_counter.inc()
+    return jsonify({"status": "called"})
 
 @app.route("/jobs", methods=["POST"])
 def create_job():
@@ -162,7 +185,6 @@ def worker_loop():
                     slow_n = CHAOS_STATE["slow_every_nth"]
                     fail_rate = CHAOS_STATE["failure_rate"]
 
-                # Decide if this job should randomly fail
                 if fail_rate > 0 and random.random() < fail_rate:
                     time.sleep(1)
                     job["status"] = "failed"
@@ -179,7 +201,6 @@ def worker_loop():
                     )
                     continue
 
-                # Decide if this job should be artificially slow
                 if slow_n > 0 and current_count % slow_n == 0:
                     time.sleep(30)
                 else:
