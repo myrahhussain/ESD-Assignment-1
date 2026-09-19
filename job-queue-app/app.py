@@ -101,7 +101,7 @@ def worker_loop():
 
                 start_time = time.time()
 
-                time.sleep(2)
+                time.sleep(8)
 
                 filename, invoice_total = generate_invoice(job_id, job["customer"], job["items"])
 
