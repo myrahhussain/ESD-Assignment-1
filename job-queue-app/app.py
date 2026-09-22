@@ -8,6 +8,7 @@ import random
 import logging
 from pythonjsonlogger import jsonlogger
 from fpdf import FPDF
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -80,21 +81,47 @@ cardinality_test_safe_counter = Counter(
 def generate_invoice(job_id, customer, items):
     pdf = FPDF()
     pdf.add_page()
-    pdf.set_font("Helvetica", size=16)
-    pdf.cell(0, 10, "SHOP INVOICE", ln=True)
 
-    pdf.set_font("Helvetica", size=12)
-    pdf.cell(0, 10, f"Customer: {customer}", ln=True)
-    pdf.ln(5)
+    pdf.set_font("Helvetica", "B", 20)
+    pdf.cell(0, 12, "SHOP INVOICE", align="C", ln=True)
+    pdf.ln(2)
 
+    pdf.set_font("Helvetica", size=10)
+    invoice_number = job_id.split("-")[0].upper()
+    pdf.cell(0, 6, f"Invoice #: {invoice_number}", ln=True)
+    pdf.cell(0, 6, f"Date: {datetime.now().strftime('%B %d, %Y')}", ln=True)
+    pdf.ln(4)
+
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(0, 6, f"Customer: {customer}", ln=True)
+    pdf.ln(6)
+
+    col_widths = [80, 25, 35, 40]
+    headers = ["Item", "Qty", "Price", "Total"]
+
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.set_fill_color(230, 230, 230)
+    for width, header in zip(col_widths, headers):
+        align = "L" if header == "Item" else "R"
+        pdf.cell(width, 8, header, border=1, align=align, fill=True)
+    pdf.ln()
+
+    pdf.set_font("Helvetica", size=10)
     total = 0
     for item in items:
         line_total = item["qty"] * item["price"]
         total += line_total
-        pdf.cell(0, 10, f"{item['name']} - Qty: {item['qty']} - Price: ${item['price']} - Total: ${line_total}", ln=True)
+        pdf.cell(col_widths[0], 8, str(item["name"]), border=1)
+        pdf.cell(col_widths[1], 8, str(item["qty"]), border=1, align="R")
+        pdf.cell(col_widths[2], 8, f"${item['price']:.2f}", border=1, align="R")
+        pdf.cell(col_widths[3], 8, f"${line_total:.2f}", border=1, align="R")
+        pdf.ln()
 
-    pdf.ln(5)
-    pdf.cell(0, 10, f"Grand Total: ${total}", ln=True)
+    pdf.ln(4)
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(sum(col_widths[:3]), 8, "Grand Total:", align="R")
+    pdf.cell(col_widths[3], 8, f"${total:.2f}", border=1, align="R")
+    pdf.ln()
 
     filename = f"invoices/invoice_{job_id}.pdf"
     pdf.output(filename)
@@ -145,7 +172,7 @@ def create_job():
     logger.info(
         "Job submitted",
         extra={
-            "service": SERVICE_NAME,
+            "app_service": SERVICE_NAME,
             "job_id": job_id,
             "event_type": "job_submitted",
             "customer": data["customer"],
@@ -174,7 +201,7 @@ def worker_loop():
                 job["status"] = "in_progress"
                 logger.info(
                     "Job processing started",
-                    extra={"service": SERVICE_NAME, "job_id": job_id, "event_type": "job_started"}
+                    extra={"app_service": SERVICE_NAME, "job_id": job_id, "event_type": "job_started"}
                 )
 
                 start_time = time.time()
@@ -193,7 +220,7 @@ def worker_loop():
                     logger.error(
                         "Job failed during processing",
                         extra={
-                            "service": SERVICE_NAME,
+                            "app_service": SERVICE_NAME,
                             "job_id": job_id,
                             "event_type": "job_failed",
                             "reason": "simulated_failure"
@@ -223,7 +250,7 @@ def worker_loop():
                 logger.info(
                     "Job completed successfully",
                     extra={
-                        "service": SERVICE_NAME,
+                        "app_service": SERVICE_NAME,
                         "job_id": job_id,
                         "event_type": "job_completed",
                         "invoice_file": filename,
